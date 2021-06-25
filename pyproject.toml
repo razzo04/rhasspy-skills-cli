@@ -1,0 +1,23 @@
+[tool.poetry]
+name = "rhasspy-skills-cli"
+version = "0.1.0"
+description = ""
+authors = ["razzo04 <razzorazzo1@gmail.com>"]
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.scripts]
+rhskill = "rhasspy_skills_cli.main:app"
+
+[tool.poetry.dependencies]
+python = "^3.8"
+typer = "0.3.2"
+httpx = "0.18.2"
+GitPython = "3.1.18"
+pydantic = "1.8.2"
+
+[tool.poetry.dev-dependencies]
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
