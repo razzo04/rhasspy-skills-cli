@@ -1,4 +1,4 @@
-from typing import Dict, Optional, List
+from typing import Any, Dict, Optional, List
 from pydantic.main import BaseModel
 
 class Manifest(BaseModel):
@@ -11,3 +11,5 @@ class Manifest(BaseModel):
     languages: Optional[List[str]]
     auto_train: bool = True
     topic_access: Optional[Dict[str, int]]
+    default_config: Optional[Dict[str, Any]]
+    schema_config: Optional[Dict[str, Any]]

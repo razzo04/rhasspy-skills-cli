@@ -6,18 +6,53 @@ import tarfile
 import traceback
 from pathlib import Path
 from re import I
-from typing import IO, List, Union
+from typing import Any, Dict, IO, List, Optional, Union
 from urllib.parse import urljoin
 
-import git
+import os
+import json
+from click.exceptions import Abort
 import httpx
 import typer
 from git import Repo
-
+from pydantic import ValidationError
 from .manifest import Manifest
 
 app = typer.Typer()
 
+def ask_prompt_skill_config(manifest: Manifest, default_config: Optional[Dict[str, Any]] = None, schema: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    if manifest.schema is None:
+        return {}
+    if default_config is None:
+        default_config = manifest.default_config
+    if schema is None:
+        schema = manifest.schema_config
+    config: Dict[str, Any] = {} 
+    for key, value in schema.items():
+        if isinstance(value, str):
+            config[key] = typer.prompt(f"skill require {key}",default=default_config[key] if default_config else None )
+        elif isinstance(value, list):
+            #TODO add support for list
+            config[key] = typer.prompt(f"skill require {key}",default=default_config[key] if default_config else None)
+        elif isinstance(value, dict):
+            config = {**config, key: ask_prompt_skill_config(manifest, default_config[key] if default_config else None, schema[key])}
+    return config
+
+def generate_skill_config(skill_path: str):
+    manifest_path = os.path.join(skill_path, "manifest.json")
+    if not os.path.isfile(manifest_path):
+        typer.echo("Folder doesn't containt a manifest")
+        raise typer.Exit(1)
+    try:    
+        manifest = Manifest.parse_file(manifest_path)
+    except ValidationError as e:
+        typer.echo("Invalid manifest.json: " + str(e.errors()))
+        raise typer.Exit(1)
+    config: Dict[str, Any] = {}
+    if manifest.schema_config:
+        config = ask_prompt_skill_config(manifest)
+    with open(os.path.join(skill_path, "config.json"),"w") as f:
+        f.write(json.dumps(config))
 
 def get_skill_by_repo(
     skill_name: str,
@@ -101,12 +136,11 @@ def install(
     p = Path(path_or_name)
     if p.exists():
         if p.is_dir():
+            generate_skill_config(p.resolve())
             typer.echo("Compressing folder")
             with io.BytesIO() as file:
                 with tarfile.open(fileobj=file, mode="w") as tar:
                     tar.add(p, arcname="")
-                with open("archive.tar", "wb") as f:
-                    f.write(file.getvalue())
                 typer.echo("sending request")
                 raise typer.Exit(0 if send_archive(file.getvalue(), p.name) else 1)
 
@@ -119,8 +153,10 @@ def install(
     skill_path = get_skill_by_repo(
         path_or_name, repositories, get_root_repo_folder(), cache
     )
+    
     if skill_path is not None:
-        typer.echo("Skill found installing")
+        typer.echo("Skill found")
+        generate_skill_config(skill_path)
         res = send_archive(compress_folder(skill_path), path_or_name + ".tar")
         if not cache:
             clean_repo()
@@ -154,7 +190,7 @@ def create(
     if name is None:
         name = typer.prompt("name of new skill")
     if slug is None:
-        slug = typer.prompt("slug of new skill", default=name.lower().replace(" ", "_"))
+        slug = typer.prompt("slug of new skill", default=name.strip().lower().replace(" ", "_"))
     if version is None or interactive:
         version = typer.prompt("version of new skill", default="0.1.0")
     if description is None:
@@ -168,6 +204,20 @@ def create(
         )
     if languages is None or interactive:
         languages = typer.prompt("list of languages supported", default="en")
+    schema = {}
+    default_config = {}
+    if interactive:
+        r = typer.confirm("Your skill need options?")
+        if r:
+            typer.echo("You can stop adding new option with CTRL+C")
+            try:
+                while True:
+                    name = typer.prompt("name of new option", )
+                    default = typer.prompt(f"default value for {name}", default=None)
+                    schema[name] = "str"
+                    if default is not None: default_config[name] = default
+            except Abort:
+                pass
     if template is None or interactive:
         template = typer.prompt(
             "chose witch template to use, if you want only generate the manifest you can type none",
@@ -185,6 +235,8 @@ def create(
         description=description,
         internet_access=internet_access,
         languages=languages.split(","),
+        default_config=default_config,
+        schema_config=schema
     )
     if template is not None or template.lower() != "none":
         # download template
