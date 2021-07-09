@@ -30,12 +30,12 @@ def ask_prompt_skill_config(manifest: Manifest, default_config: Optional[Dict[st
     config: Dict[str, Any] = {} 
     for key, value in schema.items():
         if isinstance(value, str):
-            config[key] = typer.prompt(f"skill require {key}",default=default_config[key] if default_config else None )
+            config[key] = typer.prompt(f"skill require {key}",default=default_config.get(key, None) if default_config else None)
         elif isinstance(value, list):
             #TODO add support for list
-            config[key] = typer.prompt(f"skill require {key}",default=default_config[key] if default_config else None)
+            config[key] = typer.prompt(f"skill require {key}",default=default_config.get(key, None) if default_config else None)
         elif isinstance(value, dict):
-            config = {**config, key: ask_prompt_skill_config(manifest, default_config[key] if default_config else None, schema[key])}
+            config = {**config, key: ask_prompt_skill_config(manifest, default_config.get(key, None) if default_config else None, schema[key])}
     return config
 
 def generate_skill_config(skill_path: str):
@@ -212,7 +212,8 @@ def create(
             typer.echo("You can stop adding new option with CTRL+C")
             try:
                 while True:
-                    name = typer.prompt("name of new option", )
+                    name = typer.prompt("name of new option")
+                    name = name.strip().lower().replace(" ","_")
                     default = typer.prompt(f"default value for {name}", default=None)
                     schema[name] = "str"
                     if default is not None: default_config[name] = default
