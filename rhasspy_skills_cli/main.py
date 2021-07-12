@@ -165,10 +165,13 @@ def install(
 
 
 @app.command()
-def uninstall(name: str):
-    pass
-
-
+def uninstall(name: str, force: bool = typer.Option(False, "--force","-f"), host: str = typer.Option("http://127.0.0.1:9090")):
+    with httpx.Client(timeout=15) as client:
+        res = client.delete(urljoin(host, f"api/skills/{name}"), params={"force":force})
+        if res.status_code != 200:
+            typer.echo(f"Request failed: {res.text}")
+        else:
+            typer.echo(f"Response: {res.text}")
 @app.command()
 def create(
     dest_path: Path = typer.Argument("."),
