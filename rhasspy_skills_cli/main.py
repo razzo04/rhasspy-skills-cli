@@ -1,21 +1,22 @@
 import io
+import json
 import os
 import shutil
 import stat
+import sys
 import tarfile
 import traceback
 from pathlib import Path
 from re import I
-from typing import Any, Dict, IO, List, Optional, Union
+from typing import IO, Any, Dict, List, Optional, Union
 from urllib.parse import urljoin
 
-import os
-import json
-from click.exceptions import Abort
 import httpx
 import typer
+from click.exceptions import Abort
 from git import Repo
 from pydantic import ValidationError
+
 from .manifest import Manifest
 
 app = typer.Typer()
@@ -163,6 +164,13 @@ def install(
         raise typer.Exit(0 if res else 1)
     typer.echo(f"Skill {path_or_name} not found")
 
+@app.command("ls",short_help="show installed skill")
+def list_skill(host: str = typer.Option("http://127.0.0.1:9090")):
+    with httpx.Client() as client:
+        res = client.get(urljoin(host, f"api/skills"))
+        skills = res.json()
+        for skill in skills:
+            typer.echo(skill["skill_name"])
 
 @app.command()
 def uninstall(name: str, force: bool = typer.Option(False, "--force","-f"), host: str = typer.Option("http://127.0.0.1:9090")):
@@ -248,7 +256,13 @@ def create(
             template, [template_repository], get_root_repo_folder()
         )
         if skill_path is not None:
-            shutil.copytree(skill_path, new_skill_path, dirs_exist_ok=True)
+            if sys.version_info >= (3,8):
+                shutil.copytree(skill_path, new_skill_path, dirs_exist_ok=True)
+            else:
+                if os.path.isdir(new_skill_path):
+                    shutil.rmtree(new_skill_path)
+                shutil.copytree(skill_path, new_skill_path)
+                
         else:
             typer.echo(f"Template {template} not found")
     with open(os.path.join(new_skill_path, "manifest.json"), "w") as f:
