@@ -169,17 +169,39 @@ def list_skill(host: str = typer.Option("http://127.0.0.1:9090")):
     with httpx.Client() as client:
         res = client.get(urljoin(host, f"api/skills"))
         skills = res.json()
+        if len(skills) == 0:
+            typer.echo("no skill installed")
         for skill in skills:
             typer.echo(skill["skill_name"])
 
 @app.command()
 def uninstall(name: str, force: bool = typer.Option(False, "--force","-f"), host: str = typer.Option("http://127.0.0.1:9090")):
-    with httpx.Client(timeout=15) as client:
+    with httpx.Client(timeout=20) as client:
         res = client.delete(urljoin(host, f"api/skills/{name}"), params={"force":force})
         if res.status_code != 200:
             typer.echo(f"Request failed: {res.text}")
         else:
             typer.echo(f"Response: {res.text}")
+
+@app.command()
+def start(name: str, host: str = typer.Option("http://127.0.0.1:9090")):
+    with httpx.Client(timeout=20) as client:
+        res = client.post(urljoin(host, f"api/skills/{name}/start"))
+        if res.status_code != 200:
+            typer.echo(f"Request failed: {res.text}")
+        else:
+            typer.echo(f"Response: {res.text}")
+
+@app.command()
+def stop(name: str, force: bool = typer.Option(False, "--force","-f"), host: str = typer.Option("http://127.0.0.1:9090")):
+    with httpx.Client(timeout=20) as client:
+        res = client.post(urljoin(host, f"api/skills/{name}/stop"), params={"force":force})
+        if res.status_code != 200:
+            typer.echo(f"Request failed: {res.text}")
+        else:
+            typer.echo(f"Response: {res.text}")
+
+
 @app.command()
 def create(
     dest_path: Path = typer.Argument("."),
