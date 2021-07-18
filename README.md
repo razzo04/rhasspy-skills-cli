@@ -7,7 +7,7 @@ pip install rhasspy-skills-cli
 # Install new skill
 To install a new skill is very simple, you just need to specify the name. 
 ```bash
-rhskill install time_examples
+rhskill install time_example
 ```
 The application will clone the repositories passed with the flag "--repositories" by default will use the [examples repository](https://github.com/razzo04/rhasspy-skills-examples.git) and then will search for the skill with the corresponding name. You can also install a local directory or tar archive which contains the manifest.json. 
 
