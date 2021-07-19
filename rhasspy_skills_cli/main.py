@@ -108,17 +108,18 @@ def clean_repo():
 
 
 def send_archive(
-    archive: bytes, file_name: str = "skill.tar", host: str = "http://127.0.0.1:9090"
+    archive: bytes, file_name: str = "skill.tar", host: str = "http://127.0.0.1:9090", force: bool = False, star_on_boot: bool = False
 ) -> bool:
     try:
         with httpx.Client(timeout=60) as client:
             res = client.post(
                 urljoin(host, "api/skills"),
                 files={"file": (file_name, archive, "application/x-tar")},
+                params={"force":force, "start_on_boot":star_on_boot}
             )
             if res.status_code != 200:
                 typer.echo(f"Request failed: {res.text}")
-                # TODO add different code two handle different error
+                # TODO add different codes to handle different errors
                 return False
             return True
     except Exception:
@@ -133,6 +134,8 @@ def install(
         "https://github.com/razzo04/rhasspy-skills-examples.git"
     ],
     cache: bool = False,
+    force: bool = typer.Option(False, "--force","-f"),
+    start_on_boot: bool = typer.Option(False, "--run-at-startup", "-b")
 ):
     p = Path(path_or_name)
     if p.exists():
@@ -143,13 +146,13 @@ def install(
                 with tarfile.open(fileobj=file, mode="w") as tar:
                     tar.add(p, arcname="")
                 typer.echo("sending request")
-                raise typer.Exit(0 if send_archive(file.getvalue(), p.name) else 1)
+                raise typer.Exit(0 if send_archive(file.getvalue(), p.name, force=force, star_on_boot=start_on_boot) else 1)
 
         if p.is_file():
             if not tarfile.is_tarfile(p):
                 typer.echo(f"{path_or_name} is not a tar archive")
                 raise typer.Exit(code=1)
-            raise typer.Exit(0 if send_archive(p.read_bytes(), p.name) else 1)
+            raise typer.Exit(0 if send_archive(p.read_bytes(), p.name, force=force, star_on_boot=start_on_boot) else 1)
     typer.echo(f"Search {path_or_name}")
     skill_path = get_skill_by_repo(
         path_or_name, repositories, get_root_repo_folder(), cache
@@ -158,7 +161,7 @@ def install(
     if skill_path is not None:
         typer.echo("Skill found")
         generate_skill_config(skill_path)
-        res = send_archive(compress_folder(skill_path), path_or_name + ".tar")
+        res = send_archive(compress_folder(skill_path), path_or_name + ".tar", force=force, star_on_boot=start_on_boot)
         if not cache:
             clean_repo()
         raise typer.Exit(0 if res else 1)
