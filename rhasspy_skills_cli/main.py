@@ -21,6 +21,14 @@ from .manifest import Manifest
 
 app = typer.Typer()
 
+state = {}
+
+def get_host() -> str:
+    if "host" in state:
+        return state["host"]
+    else:
+        return "http://127.0.0.1:9090"
+
 def ask_prompt_skill_config(manifest: Manifest, default_config: Optional[Dict[str, Any]] = None, schema: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     if manifest.schema is None:
         return {}
@@ -61,7 +69,7 @@ def get_skill_by_repo(
     dest_path: str,
     cache: bool = False,
 ) -> Union[str, None]:
-    #TODO use cache
+    # TODO use cache
     dowload_or_update_repo(repositories, dest_path)
     for repo in repositories:
         repo_folder = os.path.join(get_root_repo_folder(), get_repo_name_by_link(repo))
@@ -146,13 +154,13 @@ def install(
                 with tarfile.open(fileobj=file, mode="w") as tar:
                     tar.add(p, arcname="")
                 typer.echo("sending request")
-                raise typer.Exit(0 if send_archive(file.getvalue(), p.name, force=force, star_on_boot=start_on_boot) else 1)
+                raise typer.Exit(0 if send_archive(file.getvalue(), p.name, force=force, star_on_boot=start_on_boot, host=get_host()) else 1)
 
         if p.is_file():
             if not tarfile.is_tarfile(p):
                 typer.echo(f"{path_or_name} is not a tar archive")
                 raise typer.Exit(code=1)
-            raise typer.Exit(0 if send_archive(p.read_bytes(), p.name, force=force, star_on_boot=start_on_boot) else 1)
+            raise typer.Exit(0 if send_archive(p.read_bytes(), p.name, force=force, star_on_boot=start_on_boot, host=get_host()) else 1)
     typer.echo(f"Search {path_or_name}")
     skill_path = get_skill_by_repo(
         path_or_name, repositories, get_root_repo_folder(), cache
@@ -161,16 +169,16 @@ def install(
     if skill_path is not None:
         typer.echo("Skill found")
         generate_skill_config(skill_path)
-        res = send_archive(compress_folder(skill_path), path_or_name + ".tar", force=force, star_on_boot=start_on_boot)
+        res = send_archive(compress_folder(skill_path), path_or_name + ".tar", force=force, star_on_boot=start_on_boot, host=get_host())
         if not cache:
             clean_repo()
         raise typer.Exit(0 if res else 1)
     typer.echo(f"Skill {path_or_name} not found")
 
 @app.command("ls",short_help="show installed skill")
-def list_skill(host: str = typer.Option("http://127.0.0.1:9090")):
+def list_skill():
     with httpx.Client() as client:
-        res = client.get(urljoin(host, f"api/skills"))
+        res = client.get(urljoin(get_host(), f"api/skills"))
         skills = res.json()
         if len(skills) == 0:
             typer.echo("no skill installed")
@@ -178,27 +186,27 @@ def list_skill(host: str = typer.Option("http://127.0.0.1:9090")):
             typer.echo(skill["skill_name"])
 
 @app.command()
-def uninstall(name: str, force: bool = typer.Option(False, "--force","-f"), host: str = typer.Option("http://127.0.0.1:9090")):
+def uninstall(name: str, force: bool = typer.Option(False, "--force","-f")):
     with httpx.Client(timeout=20) as client:
-        res = client.delete(urljoin(host, f"api/skills/{name}"), params={"force":force})
+        res = client.delete(urljoin(get_host(), f"api/skills/{name}"), params={"force":force})
         if res.status_code != 200:
             typer.echo(f"Request failed: {res.text}")
         else:
             typer.echo(f"Response: {res.text}")
 
 @app.command()
-def start(name: str, host: str = typer.Option("http://127.0.0.1:9090")):
+def start(name: str):
     with httpx.Client(timeout=20) as client:
-        res = client.post(urljoin(host, f"api/skills/{name}/start"))
+        res = client.post(urljoin(get_host(), f"api/skills/{name}/start"))
         if res.status_code != 200:
             typer.echo(f"Request failed: {res.text}")
         else:
             typer.echo(f"Response: {res.text}")
 
 @app.command()
-def stop(name: str, force: bool = typer.Option(False, "--force","-f"), host: str = typer.Option("http://127.0.0.1:9090")):
+def stop(name: str, force: bool = typer.Option(False, "--force","-f")):
     with httpx.Client(timeout=20) as client:
-        res = client.post(urljoin(host, f"api/skills/{name}/stop"), params={"force":force})
+        res = client.post(urljoin(get_host(), f"api/skills/{name}/stop"), params={"force":force})
         if res.status_code != 200:
             typer.echo(f"Request failed: {res.text}")
         else:
@@ -293,6 +301,11 @@ def create(
     with open(os.path.join(new_skill_path, "manifest.json"), "w") as f:
         f.write(manifest.json())
 
+
+@app.callback()
+def main(host: str = typer.Option("http://127.0.0.1:9090")):
+    if host:
+        state["host"] = host
 
 if __name__ == "__main__":
     app()
