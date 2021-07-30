@@ -1,6 +1,7 @@
 from typing import Any, Dict, Optional, List
 from pydantic.main import BaseModel
 
+
 class Manifest(BaseModel):
     name: str
     slug: str

@@ -7,8 +7,7 @@ import sys
 import tarfile
 import traceback
 from pathlib import Path
-from re import I
-from typing import IO, Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 from urllib.parse import urljoin
 
 import httpx
@@ -23,36 +22,56 @@ app = typer.Typer()
 
 state = {}
 
+
 def get_host() -> str:
     if "host" in state:
         return state["host"]
     else:
         return "http://127.0.0.1:9090"
 
-def ask_prompt_skill_config(manifest: Manifest, default_config: Optional[Dict[str, Any]] = None, schema: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+
+def ask_prompt_skill_config(
+    manifest: Manifest,
+    default_config: Optional[Dict[str, Any]] = None,
+    schema: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     if manifest.schema is None:
         return {}
     if default_config is None:
         default_config = manifest.default_config
     if schema is None:
         schema = manifest.schema_config
-    config: Dict[str, Any] = {} 
+    config: Dict[str, Any] = {}
     for key, value in schema.items():
         if isinstance(value, str):
-            config[key] = typer.prompt(f"skill require {key}",default=default_config.get(key, None) if default_config else None)
+            config[key] = typer.prompt(
+                f"skill require {key}",
+                default=default_config.get(key, None) if default_config else None,
+            )
         elif isinstance(value, list):
-            #TODO add support for list
-            config[key] = typer.prompt(f"skill require {key}",default=default_config.get(key, None) if default_config else None)
+            # TODO add support for list
+            config[key] = typer.prompt(
+                f"skill require {key}",
+                default=default_config.get(key, None) if default_config else None,
+            )
         elif isinstance(value, dict):
-            config = {**config, key: ask_prompt_skill_config(manifest, default_config.get(key, None) if default_config else None, schema[key])}
+            config = {
+                **config,
+                key: ask_prompt_skill_config(
+                    manifest,
+                    default_config.get(key, None) if default_config else None,
+                    schema[key],
+                ),
+            }
     return config
+
 
 def generate_skill_config(skill_path: str):
     manifest_path = os.path.join(skill_path, "manifest.json")
     if not os.path.isfile(manifest_path):
         typer.echo("Folder doesn't containt a manifest")
         raise typer.Exit(1)
-    try:    
+    try:
         manifest = Manifest.parse_file(manifest_path)
     except ValidationError as e:
         typer.echo("Invalid manifest.json: " + str(e.errors()))
@@ -60,8 +79,9 @@ def generate_skill_config(skill_path: str):
     config: Dict[str, Any] = {}
     if manifest.schema_config:
         config = ask_prompt_skill_config(manifest)
-    with open(os.path.join(skill_path, "config.json"),"w") as f:
+    with open(os.path.join(skill_path, "config.json"), "w") as f:
         f.write(json.dumps(config))
+
 
 def get_skill_by_repo(
     skill_name: str,
@@ -94,7 +114,7 @@ def dowload_or_update_repo(
         clean_repo()
     for repository in repositories:
         repo_folder = os.path.join(dest_path, get_repo_name_by_link(repository))
-        r = Repo.clone_from(repository, repo_folder)
+        Repo.clone_from(repository, repo_folder)
 
 
 def compress_folder(path: str) -> bytes:
@@ -116,14 +136,18 @@ def clean_repo():
 
 
 def send_archive(
-    archive: bytes, file_name: str = "skill.tar", host: str = "http://127.0.0.1:9090", force: bool = False, star_on_boot: bool = False
+    archive: bytes,
+    file_name: str = "skill.tar",
+    host: str = "http://127.0.0.1:9090",
+    force: bool = False,
+    star_on_boot: bool = False,
 ) -> bool:
     try:
         with httpx.Client(timeout=60) as client:
             res = client.post(
                 urljoin(host, "api/skills"),
                 files={"file": (file_name, archive, "application/x-tar")},
-                params={"force":force, "start_on_boot":star_on_boot}
+                params={"force": force, "start_on_boot": star_on_boot},
             )
             if res.status_code != 200:
                 typer.echo(f"Request failed: {res.text}")
@@ -142,8 +166,8 @@ def install(
         "https://github.com/razzo04/rhasspy-skills-examples.git"
     ],
     cache: bool = False,
-    force: bool = typer.Option(False, "--force","-f"),
-    start_on_boot: bool = typer.Option(False, "--run-at-startup", "-b")
+    force: bool = typer.Option(False, "--force", "-f"),
+    start_on_boot: bool = typer.Option(False, "--run-at-startup", "-b"),
 ):
     p = Path(path_or_name)
     if p.exists():
@@ -154,28 +178,55 @@ def install(
                 with tarfile.open(fileobj=file, mode="w") as tar:
                     tar.add(p, arcname="")
                 typer.echo("sending request")
-                raise typer.Exit(0 if send_archive(file.getvalue(), p.name, force=force, star_on_boot=start_on_boot, host=get_host()) else 1)
+                raise typer.Exit(
+                    0
+                    if send_archive(
+                        file.getvalue(),
+                        p.name,
+                        force=force,
+                        star_on_boot=start_on_boot,
+                        host=get_host(),
+                    )
+                    else 1
+                )
 
         if p.is_file():
             if not tarfile.is_tarfile(p):
                 typer.echo(f"{path_or_name} is not a tar archive")
                 raise typer.Exit(code=1)
-            raise typer.Exit(0 if send_archive(p.read_bytes(), p.name, force=force, star_on_boot=start_on_boot, host=get_host()) else 1)
+            raise typer.Exit(
+                0
+                if send_archive(
+                    p.read_bytes(),
+                    p.name,
+                    force=force,
+                    star_on_boot=start_on_boot,
+                    host=get_host(),
+                )
+                else 1
+            )
     typer.echo(f"Search {path_or_name}")
     skill_path = get_skill_by_repo(
         path_or_name, repositories, get_root_repo_folder(), cache
     )
-    
+
     if skill_path is not None:
         typer.echo("Skill found")
         generate_skill_config(skill_path)
-        res = send_archive(compress_folder(skill_path), path_or_name + ".tar", force=force, star_on_boot=start_on_boot, host=get_host())
+        res = send_archive(
+            compress_folder(skill_path),
+            path_or_name + ".tar",
+            force=force,
+            star_on_boot=start_on_boot,
+            host=get_host(),
+        )
         if not cache:
             clean_repo()
         raise typer.Exit(0 if res else 1)
     typer.echo(f"Skill {path_or_name} not found")
 
-@app.command("ls",short_help="show installed skill")
+
+@app.command("ls", short_help="show installed skill")
 def list_skill():
     with httpx.Client() as client:
         res = client.get(urljoin(get_host(), f"api/skills"))
@@ -185,14 +236,18 @@ def list_skill():
         for skill in skills:
             typer.echo(skill["skill_name"])
 
+
 @app.command()
-def uninstall(name: str, force: bool = typer.Option(False, "--force","-f")):
+def uninstall(name: str, force: bool = typer.Option(False, "--force", "-f")):
     with httpx.Client(timeout=20) as client:
-        res = client.delete(urljoin(get_host(), f"api/skills/{name}"), params={"force":force})
+        res = client.delete(
+            urljoin(get_host(), f"api/skills/{name}"), params={"force": force}
+        )
         if res.status_code != 200:
             typer.echo(f"Request failed: {res.text}")
         else:
             typer.echo(f"Response: {res.text}")
+
 
 @app.command()
 def start(name: str):
@@ -203,10 +258,13 @@ def start(name: str):
         else:
             typer.echo(f"Response: {res.text}")
 
+
 @app.command()
-def stop(name: str, force: bool = typer.Option(False, "--force","-f")):
+def stop(name: str, force: bool = typer.Option(False, "--force", "-f")):
     with httpx.Client(timeout=20) as client:
-        res = client.post(urljoin(get_host(), f"api/skills/{name}/stop"), params={"force":force})
+        res = client.post(
+            urljoin(get_host(), f"api/skills/{name}/stop"), params={"force": force}
+        )
         if res.status_code != 200:
             typer.echo(f"Request failed: {res.text}")
         else:
@@ -234,7 +292,9 @@ def create(
     if name is None:
         name = typer.prompt("name of new skill")
     if slug is None:
-        slug = typer.prompt("slug of new skill", default=name.strip().lower().replace(" ", "_"))
+        slug = typer.prompt(
+            "slug of new skill", default=name.strip().lower().replace(" ", "_")
+        )
     if version is None or interactive:
         version = typer.prompt("version of new skill", default="0.1.0")
     if description is None:
@@ -257,10 +317,11 @@ def create(
             try:
                 while True:
                     name = typer.prompt("name of new option")
-                    name = name.strip().lower().replace(" ","_")
+                    name = name.strip().lower().replace(" ", "_")
                     default = typer.prompt(f"default value for {name}", default=None)
                     schema[name] = "str"
-                    if default is not None: default_config[name] = default
+                    if default is not None:
+                        default_config[name] = default
             except Abort:
                 pass
     if template is None or interactive:
@@ -281,21 +342,21 @@ def create(
         internet_access=internet_access,
         languages=languages.split(","),
         default_config=default_config,
-        schema_config=schema
+        schema_config=schema,
     )
-    if template is not None or template.lower() != "none":
+    if template is not None and template.lower() != "none":
         # download template
         skill_path = get_skill_by_repo(
             template, [template_repository], get_root_repo_folder()
         )
         if skill_path is not None:
-            if sys.version_info >= (3,8):
+            if sys.version_info >= (3, 8):
                 shutil.copytree(skill_path, new_skill_path, dirs_exist_ok=True)
             else:
                 if os.path.isdir(new_skill_path):
                     shutil.rmtree(new_skill_path)
                 shutil.copytree(skill_path, new_skill_path)
-                
+
         else:
             typer.echo(f"Template {template} not found")
     with open(os.path.join(new_skill_path, "manifest.json"), "w") as f:
@@ -306,6 +367,7 @@ def create(
 def main(host: str = typer.Option("http://127.0.0.1:9090")):
     if host:
         state["host"] = host
+
 
 if __name__ == "__main__":
     app()
